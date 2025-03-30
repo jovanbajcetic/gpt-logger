@@ -1,43 +1,43 @@
 from flask import Flask, request, jsonify, render_template_string
 from datetime import datetime
-import json
-import os
+import requests
 
 app = Flask(__name__)
+
+# URL del endpoint de Sheety (reemplaza con la tuya si cambia)
+SHEETY_URL = "https://api.sheety.co/4ff35523befe0e1a8c6a211fa940964a/registroGptWtw/registroGpt"
 
 @app.route('/registro-uso', methods=['POST'])
 def registrar_uso():
     data = request.json
     entrada = {
-        "usuario_id": data.get("usuario_id", "anonimo"),
-        "tipo_solicitud": data.get("tipo_solicitud", "desconocida"),
-        "mensaje_usuario": data.get("mensaje_usuario"),
-        "fecha": datetime.now().isoformat()
+        "registroGpt": {
+            "usuarioId": data.get("usuario_id", "anonimo"),
+            "tipoSolicitud": data.get("tipo_solicitud", "desconocida"),
+            "mensajeUsuario": data.get("mensaje_usuario", ""),
+            "fecha": datetime.now().isoformat()
+        }
     }
 
-    # Leer logs anteriores si existen
-    if os.path.exists("logs.json"):
-        with open("logs.json", "r") as f:
-            log_data = json.load(f)
+    response = requests.post(SHEETY_URL, json=entrada)
+
+    if response.status_code in [200, 201]:
+        print("✅ Uso registrado correctamente en Sheety.")
+        return jsonify({"status": "ok"}), 200
     else:
-        log_data = []
-
-    # Agregar nueva entrada
-    log_data.append(entrada)
-
-    # Guardar todos los logs en archivo
-    with open("logs.json", "w") as f:
-        json.dump(log_data, f, indent=2)
-
-    print(f"Uso registrado: {entrada}")
-    return jsonify({"status": "ok"})
+        print("❌ Error al registrar en Sheety:", response.text)
+        return jsonify({"status": "error", "detail": response.text}), 500
 
 @app.route('/ver-logs-html', methods=['GET'])
 def ver_logs_html():
-    if os.path.exists("logs.json"):
-        with open("logs.json", "r") as f:
-            log_data = json.load(f)
-    else:
+    try:
+        response = requests.get(SHEETY_URL)
+        if response.status_code == 200:
+            log_data = response.json().get("registroGpt", [])
+        else:
+            log_data = []
+    except Exception as e:
+        print("❌ Error al obtener los registros:", e)
         log_data = []
 
     html_template = """
@@ -62,9 +62,9 @@ def ver_logs_html():
             <tbody>
                 {% for entrada in log_data %}
                 <tr>
-                    <td>{{ entrada['usuario_id'] }}</td>
-                    <td>{{ entrada['tipo_solicitud'] }}</td>
-                    <td>{{ entrada['mensaje_usuario'] }}</td>
+                    <td>{{ entrada['usuarioId'] }}</td>
+                    <td>{{ entrada['tipoSolicitud'] }}</td>
+                    <td>{{ entrada['mensajeUsuario'] }}</td>
                     <td>{{ entrada['fecha'] }}</td>
                 </tr>
                 {% endfor %}
@@ -75,8 +75,5 @@ def ver_logs_html():
     """
     return render_template_string(html_template, log_data=log_data)
 
-# Ejecutar localmente (útil solo en desarrollo)
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=3000)
-
-
